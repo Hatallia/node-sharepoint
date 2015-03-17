@@ -20,7 +20,8 @@ var buildSamlRequest = function (params) {
 
 var parseXml = function (xml, callback) {
     var parser = new xml2js.Parser({
-        emptyTag: ''  // use empty string as value when tag empty
+        emptyTag: '',  // use empty string as value when tag empty
+		explicitArray: false // array is created only if there is more than one child
     });
 
     parser.on('end', function (js) {
@@ -109,16 +110,18 @@ function requestToken(params, callback) {
         res.on('end', function () {
 
             parseXml(xml, function (js) {
+				
+				var body = js['S:Envelope']['S:Body'];
 
                 // check for errors
-                if (js['S:Body']['S:Fault']) { 
-                    var error = js['S:Body']['S:Fault']['S:Detail']['psf:error']['psf:internalerror']['psf:text'];
+                if (body['S:Fault']) { 
+                    var error = body['S:Fault']['S:Detail']['psf:error']['psf:internalerror']['psf:text'];
                     callback(error);
                     return; 
                 } 
 
                 // extract token
-                var token = js['S:Body']['wst:RequestSecurityTokenResponse']['wst:RequestedSecurityToken']['wsse:BinarySecurityToken']['#'];
+                var token = body['wst:RequestSecurityTokenResponse']['wst:RequestedSecurityToken']['wsse:BinarySecurityToken']['_'];
 
                 // Now we have the token, we need to submit it to SPO
                 submitToken({
@@ -143,13 +146,16 @@ function submitToken(params, callback) {
         path: url.path,
         headers: {
             // E accounts require a user agent string
-            'User-Agent': 'Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; Win64; x64; Trident/5.0)'
+            'User-Agent': 'Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; Win64; x64; Trident/5.0)',
+			'Content-Type': 'application/x-www-form-urlencoded'
         }
     };
-
-    var protocol = (ssl ? https : http);
-
-    
+	
+	if(ssl){
+		options.secureOptions = require('constants').SSL_OP_NO_TLSv1_2;
+	}
+	
+    var protocol = (ssl ? https : http);    
 
     var req = protocol.request(options, function (res) {
 
